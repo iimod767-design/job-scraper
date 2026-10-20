@@ -5,15 +5,11 @@ from flask import Flask
 from telegram import Bot
 from telethon import TelegramClient, events
 
-# 1. بيانات الاعتماد (Telegram App API)
 API_ID = 37351508
 API_HASH = "8f8c10087a3a64bc4eed894655cea8c5"
-
-# 2. بيانات البوت وقناتك المستهدفة بالنشر
 BOT_TOKEN = "8992637196:AAG0dHgABa5NP85RhmOXr7NjdvP_BXGXblE"
 TARGET_CHANNEL = "@Rased_k"
 
-# 3. القنوات المصدرية المراد سحب الوظائف منها
 SOURCE_CHANNELS = [
     "@joob_99",
     "@almusaedsa",
@@ -26,7 +22,6 @@ SOURCE_CHANNELS = [
     "@oodyyf",
 ]
 
-# 4. الكلمات المفتاحية لتصفية إعلانات الوظائف
 KEYWORDS = [
     "وظيفة",
     "وظائف",
@@ -41,7 +36,7 @@ KEYWORDS = [
     "فرصة",
 ]
 
-# --- سيرفر الويب لإبقاء Render شغالاً ---
+# --- سيرفر الويب ---
 app = Flask(__name__)
 
 
@@ -51,12 +46,13 @@ def home():
 
 
 def run_flask():
-  port = int(os.environ.get("PORT", 8080))
+  port = int(os.environ.get("PORT", 10000))
   app.run(host="0.0.0.0", port=port)
 
 
-# --- بوت التيليجرام والراصد ---
-client = TelegramClient("job_monitor_session", API_ID, API_HASH)
+# --- بوت التيليجرام ---
+# استخدام Bot Token مباشرة مع Telethon لتجنب طلب تسجيل الدخول برقم الجوال
+client = TelegramClient("job_session", API_ID, API_HASH)
 bot = Bot(token=BOT_TOKEN)
 
 
@@ -81,13 +77,14 @@ async def job_listener_handler(event):
 
 async def run_bot():
   print("🤖 جاري تشغيل الراصد الوظيفي والاستماع للقنوات...")
-  await client.start()
+  # تسجيل الدخول التلقائي باستخدام البوت تكن بدل الجوال
+  await client.start(bot_token=BOT_TOKEN)
   await client.run_until_disconnected()
 
 
 if __name__ == "__main__":
-  # تشغيل سيرفر الويب في خلفية منفصلة
+  # تشغيل سيرفر الويب
   threading.Thread(target=run_flask, daemon=True).start()
 
-  # تشغيل بوت تيليجرام
+  # تشغيل البوت
   asyncio.run(run_bot())
