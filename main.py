@@ -15,7 +15,6 @@ SOURCE_CHANNELS = [
     "@jobsteams", "@jobs333", "@Reem_management_jobs", "@atalla3", "@oodyyf"
 ]
 
-# قائمة كلمات مفتاحية شاملة (بالعربي والإنجليزي ومع صيغ الجمع)
 KEYWORDS = [
     "وظيفة", "وظائف", "شاغر", "مطلوب", "مهندس", "مهندسين", "مراقب", "سجل", "للتقديم", "فني", "إداري", "فرصة", "اعلان توظيف",
     "engineer", "engineers", "safety", "quality", "project", "manager", "job", "jobs", "hse", "technician"
@@ -58,4 +57,37 @@ def start_telegram_listener():
     @client.on(events.NewMessage(chats=SOURCE_CHANNELS))
     async def handler(event):
         msg = event.raw_text
-        if
+        if not msg:
+            return
+            
+        msg_lower = msg.lower()
+        if any(k.lower() in msg_lower for k in KEYWORDS):
+            print("📌 تم رصد منشور وظيفي جديد!")
+            txt = f"🚨 **فرصة وظيفية جديدة**\n\n{msg}\n\n🤖 *تم النشر أوتوماتيكياً عبر الراصد الوظيفي*"
+            try:
+                await bot.send_message(chat_id=TARGET_CHANNEL, text=txt)
+                print("✅ تم الإرسال بنجاح إلى @Rased_k")
+            except Exception as ex:
+                print(f"❌ خطأ في الإرسال: {ex}")
+
+    async def main():
+        print("⚡ جاري الاتصال بتيليجرام...")
+        await client.start()
+        print("🚀 الاتصال موثق وجاري الاستماع للقنوات الآن...")
+        await client.run_until_disconnected()
+
+    try:
+        loop.run_until_complete(main())
+    except Exception as e:
+        print(f"❌ خطأ في المحرك: {e}")
+
+@app.route("/")
+def index():
+    return render_template_string(HTML_PAGE)
+
+if __name__ == "__main__":
+    t = threading.Thread(target=start_telegram_listener, daemon=True)
+    t.start()
+
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
