@@ -1,17 +1,26 @@
 import os
 import asyncio
+import threading
 from flask import Flask, render_template_string, request, redirect, url_for
 from telegram import Bot
-from telethon import TelegramClient
+from telethon import TelegramClient, events
 
 API_ID = 37351508
 API_HASH = "8f8c10087a3a64bc4eed894655cea8c5"
 BOT_TOKEN = "8992637196:AAG0dHgABa5NP85RhmOXr7NjdvP_BXGXblE"
+TARGET_CHANNEL = "@Rased_k"
+
+SOURCE_CHANNELS = [
+    "@joob_99", "@almusaedsa", "@almusaedEng", "@EasternJobs",
+    "@jobsteams", "@jobs333", "@Reem_management_jobs", "@atalla3", "@oodyyf"
+]
+
+KEYWORDS = ["وظيفة", "وظائف", "شاغر", "مطلوب", "مهندس", "مراقب", "سجل", "للتقديم", "فني", "إداري", "فرصة"]
 
 app = Flask(__name__)
 bot = Bot(token=BOT_TOKEN)
 
-login_state = {"phone": "", "hash": "", "step": "phone", "error": ""}
+login_state = {"phone": "", "hash": "", "step": "authorized", "error": ""}
 
 HTML_PAGE = """
 <!DOCTYPE html>
@@ -37,7 +46,7 @@ HTML_PAGE = """
         {% if step == 'authorized' %}
             <div class="success">
                 ✅ الحساب متصل بنجاح!
-                <p style="color: #94a3b8; font-size: 14px; font-weight: normal; margin-top: 8px;">الراصد جاهز تماماً للعمل.</p>
+                <p style="color: #94a3b8; font-size: 14px; font-weight: normal; margin-top: 8px;">الراصد يراقب القنوات الآن وينشر الوظائف تلقائياً على @Rased_k</p>
             </div>
         {% elif step == 'phone' %}
             <p style="color: #cbd5e1;">أدخل رقم جوالك المربوط بتيليجرام مع رمز الدولة:</p>
@@ -60,68 +69,42 @@ HTML_PAGE = """
 </html>
 """
 
-def run_async(coro):
+def start_telethon_bot():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+    
+    client = TelegramClient("user_session", API_ID, API_HASH, loop=loop)
+
+    @client.on(events.NewMessage(chats=SOURCE_CHANNELS))
+    async def handler(event):
+        msg = event.raw_text
+        if not msg:
+            return
+        if any(k in msg for k in KEYWORDS):
+            print(f"📌 تم رصد وظيفة جديدة!")
+            txt = f"🚨 **فرصة وظيفية جديدة**\n\n{msg}\n\n🤖 *تم النشر أوتوماتيكياً عبر الراصد الوظيفي*"
+            try:
+                await bot.send_message(chat_id=TARGET_CHANNEL, text=txt)
+                print("✅ تم الإرسال بنجاح إلى القناة!")
+            except Exception as ex:
+                print(f"❌ خطأ بالنشر: {ex}")
+
+    async def run():
+        await client.start()
+        print("🚀 البوت بدأ الاستماع للمسجات القادمة من القنوات...")
+        await client.run_until_disconnected()
+
+    loop.run_until_complete(run())
 
 @app.route("/")
 def index():
-    async def check():
-        client = TelegramClient("user_session", API_ID, API_HASH)
-        await client.connect()
-        auth = await client.is_user_authorized()
-        await client.disconnect()
-        return auth
-    
-    try:
-        is_auth = run_async(check())
-        if is_auth:
-            login_state["step"] = "authorized"
-    except Exception as e:
-        login_state["error"] = f"تنبيه: {str(e)}"
-
-    return render_template_string(HTML_PAGE, step=login_state["step"], error=login_state["error"])
-
-@app.route("/send-code", methods=["POST"])
-def send_code():
-    phone = request.form.get("phone", "").strip()
-    login_state["phone"] = phone
-    async def req():
-        client = TelegramClient("user_session", API_ID, API_HASH)
-        await client.connect()
-        res = await client.send_code_request(phone)
-        login_state["hash"] = res.phone_code_hash
-        await client.disconnect()
-
-    try:
-        run_async(req())
-        login_state["step"] = "code"
-        login_state["error"] = ""
-    except Exception as e:
-        login_state["error"] = f"خطأ في الإرسال: {str(e)}"
-    return redirect(url_for("index"))
-
-@app.route("/verify-code", methods=["POST"])
-def verify_code():
-    code = request.form.get("code", "").strip()
-    async def verify():
-        client = TelegramClient("user_session", API_ID, API_HASH)
-        await client.connect()
-        await client.sign_in(phone=login_state["phone"], code=code, phone_code_hash=login_state["hash"])
-        await client.disconnect()
-
-    try:
-        run_async(verify())
-        login_state["step"] = "authorized"
-        login_state["error"] = ""
-    except Exception as e:
-        login_state["error"] = f"كود خاطئ: {str(e)}"
-    return redirect(url_for("index"))
+    return render_template_string(HTML_PAGE, step="authorized", error="")
 
 if __name__ == "__main__":
+    # تشغيل الاستماع في خلفية مستقلة
+    t = threading.Thread(target=start_telethon_bot, daemon=True)
+    t.start()
+
+    # تشغيل سيرفر الويب
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
