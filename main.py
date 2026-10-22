@@ -50,9 +50,9 @@ def run_flask():
   app.run(host="0.0.0.0", port=port)
 
 
-# --- بوت التيليجرام ---
-# استخدام Bot Token مباشرة مع Telethon لتجنب طلب تسجيل الدخول برقم الجوال
-client = TelegramClient("job_session", API_ID, API_HASH)
+# --- إعداد تيليجرام (جلسة مستخدم حقيقي للسحب + بوت للنشر) ---
+# استخدام جلسة مستخدم ("user_session") لقراءة القنوات العامة بحرية
+client = TelegramClient("user_session", API_ID, API_HASH)
 bot = Bot(token=BOT_TOKEN)
 
 
@@ -69,6 +69,7 @@ async def job_listener_handler(event):
         " أوتوماتيكياً عبر الراصد الوظيفي*"
     )
     try:
+      # استخدام البوت لإرسال الرسالة للقناة المستهدفة
       await bot.send_message(chat_id=TARGET_CHANNEL, text=formatted_msg)
       print("✅ تم إرسال الوظيفة بنجاح إلى @Rased_k!")
     except Exception as e:
@@ -77,14 +78,14 @@ async def job_listener_handler(event):
 
 async def run_bot():
   print("🤖 جاري تشغيل الراصد الوظيفي والاستماع للقنوات...")
-  # تسجيل الدخول التلقائي باستخدام البوت تكن بدل الجوال
-  await client.start(bot_token=BOT_TOKEN)
+  # تشغيل عميل المستخدم (سيتطلب إدخال رقم الجوال ورمز التحقق في أول تشغيل محلياً)
+  await client.start()
   await client.run_until_disconnected()
 
 
 if __name__ == "__main__":
-  # تشغيل سيرفر الويب
+  # تشغيل سيرفر الويب في الخلفية
   threading.Thread(target=run_flask, daemon=True).start()
 
-  # تشغيل البوت
+  # تشغيل المستمع
   asyncio.run(run_bot())
