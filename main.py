@@ -1,7 +1,7 @@
 import asyncio
 import os
 import threading
-from flask import Flask, render_template_string, request, redirect, url_for
+from flask import Flask, redirect, render_template_string, request, url_for
 from telegram import Bot
 from telethon import TelegramClient, events
 
@@ -39,8 +39,10 @@ KEYWORDS = [
 app = Flask(__name__)
 bot = Bot(token=BOT_TOKEN)
 
-# إعداد حلقة العمل
+# إنشاء حلقة أحداث مخصصة لـ Telethon
 loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
 client = TelegramClient("user_session", API_ID, API_HASH, loop=loop)
 
 login_data = {"phone": "", "hash": "", "step": "phone", "error": ""}
@@ -50,38 +52,42 @@ HTML_PAGE = """
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>الراصد الوظيفي - ربط الحساب</title>
     <style>
-        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: 350px; text-align: center; }
-        input { width: 85%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; font-size: 16px; }
-        button { background: #3b82f6; color: white; border: none; padding: 12px 20px; width: 90%; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #2563eb; }
-        .success { color: #22c55e; font-size: 18px; font-weight: bold; }
-        .error { color: #ef4444; font-size: 14px; margin-top: 10px; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+        .card { background: #1e293b; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 100%; max-width: 400px; text-align: center; }
+        h2 { margin-top: 0; color: #38bdf8; }
+        input { width: 100%; padding: 14px; margin: 12px 0; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #fff; font-size: 16px; box-sizing: border-box; text-align: center; }
+        button { background: #2563eb; color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:hover { background: #1d4ed8; }
+        .success { color: #4ade80; font-size: 18px; font-weight: bold; line-height: 1.5; }
+        .error { color: #f87171; font-size: 14px; margin-top: 12px; background: rgba(239, 68, 68, 0.1); padding: 10px; border-radius: 6px; }
     </style>
 </head>
 <body>
     <div class="card">
         <h2>🤖 الراصد الوظيفي</h2>
         {% if is_authorized %}
-            <p class="success">✅ البوت متصل ويراقب القنوات بنجاح!</p>
-            <p style="color: #94a3b8; font-size: 14px;">يعمل الآن على مدار الساعة ويرسل الوظائف إلى @Rased_k</p>
+            <div class="success">
+                ✅ الحساب متصل بنجاح!
+                <p style="color: #94a3b8; font-size: 14px; font-weight: normal; margin-top: 8px;">الراصد يعمل الآن تلقائياً ويراقب القنوات ويرسل الوظائف إلى @Rased_k</p>
+            </div>
         {% elif step == 'phone' %}
-            <p>أدخل رقم جوالك مع رمز الدولة:</p>
+            <p style="color: #cbd5e1;">أدخل رقم جوالك المربوط بتيليجرام مع رمز الدولة:</p>
             <form method="POST" action="/send-code">
                 <input type="text" name="phone" placeholder="+9665XXXXXXXX" required>
                 <button type="submit">إرسال كود التحقق</button>
             </form>
         {% elif step == 'code' %}
-            <p>أدخل كود التحقق (OTP) الذي وصلك على تيليجرام:</p>
+            <p style="color: #cbd5e1;">أدخل كود التحقق (OTP) الذي وصلك على تطبيق تيليجرام:</p>
             <form method="POST" action="/verify-code">
                 <input type="text" name="code" placeholder="12345" required>
                 <button type="submit">تأكيد وتسجيل الدخول</button>
             </form>
         {% endif %}
         {% if error %}
-            <p class="error">{{ error }}</p>
+            <div class="error">{{ error }}</div>
         {% endif %}
     </div>
 </body>
@@ -89,17 +95,27 @@ HTML_PAGE = """
 """
 
 
+def run_async(coro):
+  return loop.run_until_complete(coro)
+
+
 @app.route("/")
 def index():
-  async def check():
-    if not client.is_connected():
-      await client.connect()
-    return await client.is_user_authorized()
+  try:
 
-  is_authorized = loop.run_until_complete(check())
+    async def check():
+      if not client.is_connected():
+        await client.connect()
+      return await client.is_user_authorized()
+
+    is_authorized = run_async(check())
+  except Exception as e:
+    is_authorized = False
+
   step = login_data["step"]
   if is_authorized:
     step = "authorized"
+
   return render_template_string(
       HTML_PAGE,
       is_authorized=is_authorized,
@@ -110,7 +126,7 @@ def index():
 
 @app.route("/send-code", methods=["POST"])
 def send_code():
-  phone = request.form.get("phone")
+  phone = request.form.get("phone", "").strip()
   login_data["phone"] = phone
   try:
 
@@ -120,17 +136,17 @@ def send_code():
       res = await client.send_code_request(phone)
       login_data["hash"] = res.phone_code_hash
 
-    loop.run_until_complete(req())
+    run_async(req())
     login_data["step"] = "code"
     login_data["error"] = ""
   except Exception as e:
-    login_data["error"] = str(e)
+    login_data["error"] = f"خطأ في الإرسال: {str(e)}"
   return redirect(url_for("index"))
 
 
 @app.route("/verify-code", methods=["POST"])
 def verify_code():
-  code = request.form.get("code")
+  code = request.form.get("code", "").strip()
   phone = login_data["phone"]
   phone_code_hash = login_data["hash"]
   try:
@@ -140,16 +156,16 @@ def verify_code():
           phone=phone, code=code, phone_code_hash=phone_code_hash
       )
 
-    loop.run_until_complete(verify())
+    run_async(verify())
     login_data["step"] = "authorized"
     login_data["error"] = ""
-    threading.Thread(target=start_listener, daemon=True).start()
+    start_background_listener()
   except Exception as e:
-    login_data["error"] = str(e)
+    login_data["error"] = f"كود خاطئ أو منتهي: {str(e)}"
   return redirect(url_for("index"))
 
 
-def start_listener():
+def start_background_listener():
   @client.on(events.NewMessage(chats=SOURCE_CHANNELS))
   async def handler(event):
     msg = event.raw_text
@@ -167,22 +183,28 @@ def start_listener():
       except Exception as ex:
         print(f"❌ خطأ بالنشر: {ex}")
 
-  asyncio.set_event_loop(loop)
-  loop.run_until_complete(client.run_until_disconnected())
+  def run_loop():
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(client.run_until_disconnected())
+
+  threading.Thread(target=run_loop, daemon=True).start()
 
 
-def run_flask():
-  port = int(os.environ.get("PORT", 10000))
-  app.run(host="0.0.0.0", port=port)
-
-
-if __name__ == "__main__":
+def run_telethon_init():
   async def init():
     if not client.is_connected():
       await client.connect()
     if await client.is_user_authorized():
-      threading.Thread(target=start_listener, daemon=True).start()
-      print("🤖 تم العثور على الجلسة، والبدء في الاستماع...")
+      start_background_listener()
+      print("🤖 تم العثور على الجلسة مسبقاً، والبدء في الاستماع...")
 
-  loop.run_until_complete(init())
-  run_flask()
+  try:
+    run_async(init())
+  except Exception as e:
+    print(f"تنبيه التشغيل الأولي: {e}")
+
+
+if __name__ == "__main__":
+  run_telethon_init()
+  port = int(os.environ.get("PORT", 10000))
+  app.run(host="0.0.0.0", port=port)
