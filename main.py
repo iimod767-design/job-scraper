@@ -2,19 +2,11 @@ import os
 import asyncio
 from flask import Flask, render_template_string, request, redirect, url_for
 from telegram import Bot
-from telethon import TelegramClient, events
+from telethon import TelegramClient
 
 API_ID = 37351508
 API_HASH = "8f8c10087a3a64bc4eed894655cea8c5"
 BOT_TOKEN = "8992637196:AAG0dHgABa5NP85RhmOXr7NjdvP_BXGXblE"
-TARGET_CHANNEL = "@Rased_k"
-
-SOURCE_CHANNELS = [
-    "@joob_99", "@almusaedsa", "@almusaedEng", "@EasternJobs",
-    "@jobsteams", "@jobs333", "@Reem_management_jobs", "@atalla3", "@oodyyf"
-]
-
-KEYWORDS = ["وظيفة", "وظائف", "شاغر", "مطلوب", "مهندس", "مراقب", "سجل", "للتقديم", "فني", "إداري", "فرصة"]
 
 app = Flask(__name__)
 bot = Bot(token=BOT_TOKEN)
@@ -45,7 +37,7 @@ HTML_PAGE = """
         {% if step == 'authorized' %}
             <div class="success">
                 ✅ الحساب متصل بنجاح!
-                <p style="color: #94a3b8; font-size: 14px; font-weight: normal; margin-top: 8px;">الراصد يعمل الآن تلقائياً ويراقب القنوات ويرسل الوظائف إلى @Rased_k</p>
+                <p style="color: #94a3b8; font-size: 14px; font-weight: normal; margin-top: 8px;">الراصد جاهز تماماً للعمل.</p>
             </div>
         {% elif step == 'phone' %}
             <p style="color: #cbd5e1;">أدخل رقم جوالك المربوط بتيليجرام مع رمز الدولة:</p>
@@ -62,13 +54,13 @@ HTML_PAGE = """
         {% endif %}
         {% if error %}
             <div class="error">{{ error }}</div>
-        {%/ if %}
+        {% endif %}
     </div>
 </body>
 </html>
 """
 
-def run_async_safe(coro):
+def run_async(coro):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -79,15 +71,18 @@ def run_async_safe(coro):
 @app.route("/")
 def index():
     async def check():
-        async with TelegramClient("user_session", API_ID, API_HASH) as client:
-            return await client.is_user_authorized()
+        client = TelegramClient("user_session", API_ID, API_HASH)
+        await client.connect()
+        auth = await client.is_user_authorized()
+        await client.disconnect()
+        return auth
     
     try:
-        is_auth = run_async_safe(check())
+        is_auth = run_async(check())
         if is_auth:
             login_state["step"] = "authorized"
-    except Exception:
-        pass
+    except Exception as e:
+        login_state["error"] = f"تنبيه: {str(e)}"
 
     return render_template_string(HTML_PAGE, step=login_state["step"], error=login_state["error"])
 
@@ -103,11 +98,11 @@ def send_code():
         await client.disconnect()
 
     try:
-        run_async_safe(req())
+        run_async(req())
         login_state["step"] = "code"
         login_state["error"] = ""
     except Exception as e:
-        login_state["error"] = f"خطأ: {str(e)}"
+        login_state["error"] = f"خطأ في الإرسال: {str(e)}"
     return redirect(url_for("index"))
 
 @app.route("/verify-code", methods=["POST"])
@@ -120,7 +115,7 @@ def verify_code():
         await client.disconnect()
 
     try:
-        run_async_safe(verify())
+        run_async(verify())
         login_state["step"] = "authorized"
         login_state["error"] = ""
     except Exception as e:
