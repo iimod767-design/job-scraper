@@ -1,7 +1,7 @@
 import os
 import asyncio
 import threading
-from flask import Flask, render_template_string, request, redirect, url_for
+from flask import Flask, render_template_string
 from telegram import Bot
 from telethon import TelegramClient, events
 
@@ -15,12 +15,14 @@ SOURCE_CHANNELS = [
     "@jobsteams", "@jobs333", "@Reem_management_jobs", "@atalla3", "@oodyyf"
 ]
 
-KEYWORDS = ["وظيفة", "وظائف", "شاغر", "مطلوب", "مهندس", "مراقب", "سجل", "للتقديم", "فني", "إداري", "فرصة"]
+# قائمة كلمات مفتاحية شاملة (بالعربي والإنجليزي ومع صيغ الجمع)
+KEYWORDS = [
+    "وظيفة", "وظائف", "شاغر", "مطلوب", "مهندس", "مهندسين", "مراقب", "سجل", "للتقديم", "فني", "إداري", "فرصة", "اعلان توظيف",
+    "engineer", "engineers", "safety", "quality", "project", "manager", "job", "jobs", "hse", "technician"
+]
 
 app = Flask(__name__)
 bot = Bot(token=BOT_TOKEN)
-
-login_state = {"phone": "", "hash": "", "step": "authorized", "error": ""}
 
 HTML_PAGE = """
 <!DOCTYPE html>
@@ -28,48 +30,26 @@ HTML_PAGE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>الراصد الوظيفي - ربط الحساب</title>
+    <title>الراصد الوظيفي</title>
     <style>
-        body { font-family: system-ui, sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
-        .card { background: #1e293b; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 100%; max-width: 400px; text-align: center; }
-        h2 { margin-top: 0; color: #38bdf8; }
-        input { width: 100%; padding: 14px; margin: 12px 0; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #fff; font-size: 16px; box-sizing: border-box; text-align: center; }
-        button { background: #2563eb; color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #1d4ed8; }
-        .success { color: #4ade80; font-size: 18px; font-weight: bold; line-height: 1.5; }
-        .error { color: #f87171; font-size: 14px; margin-top: 12px; background: rgba(239, 68, 68, 0.1); padding: 10px; border-radius: 6px; }
+        body { font-family: system-ui, sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 30px; border-radius: 16px; text-align: center; max-width: 400px; }
+        .success { color: #4ade80; font-size: 18px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="card">
         <h2>🤖 الراصد الوظيفي</h2>
-        {% if step == 'authorized' %}
-            <div class="success">
-                ✅ الحساب متصل بنجاح!
-                <p style="color: #94a3b8; font-size: 14px; font-weight: normal; margin-top: 8px;">الراصد يراقب القنوات الآن وينشر الوظائف تلقائياً على @Rased_k</p>
-            </div>
-        {% elif step == 'phone' %}
-            <p style="color: #cbd5e1;">أدخل رقم جوالك المربوط بتيليجرام مع رمز الدولة:</p>
-            <form method="POST" action="/send-code">
-                <input type="text" name="phone" placeholder="+9665XXXXXXXX" required>
-                <button type="submit">إرسال كود التحقق</button>
-            </form>
-        {% elif step == 'code' %}
-            <p style="color: #cbd5e1;">أدخل كود التحقق (OTP) الذي وصلك على تطبيق تيليجرام:</p>
-            <form method="POST" action="/verify-code">
-                <input type="text" name="code" placeholder="12345" required>
-                <button type="submit">تأكيد وتسجيل الدخول</button>
-            </form>
-        {% endif %}
-        {% if error %}
-            <div class="error">{{ error }}</div>
-        {% endif %}
+        <div class="success">
+            ✅ النظام يعمل وفي حالة استماع مباشر!
+            <p style="color: #94a3b8; font-size: 14px; font-weight: normal;">يتم سحب الوظائف ونشرها تلقائياً على @Rased_k</p>
+        </div>
     </div>
 </body>
 </html>
 """
 
-def start_telethon_bot():
+def start_telegram_listener():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -78,33 +58,4 @@ def start_telethon_bot():
     @client.on(events.NewMessage(chats=SOURCE_CHANNELS))
     async def handler(event):
         msg = event.raw_text
-        if not msg:
-            return
-        if any(k in msg for k in KEYWORDS):
-            print(f"📌 تم رصد وظيفة جديدة!")
-            txt = f"🚨 **فرصة وظيفية جديدة**\n\n{msg}\n\n🤖 *تم النشر أوتوماتيكياً عبر الراصد الوظيفي*"
-            try:
-                await bot.send_message(chat_id=TARGET_CHANNEL, text=txt)
-                print("✅ تم الإرسال بنجاح إلى القناة!")
-            except Exception as ex:
-                print(f"❌ خطأ بالنشر: {ex}")
-
-    async def run():
-        await client.start()
-        print("🚀 البوت بدأ الاستماع للمسجات القادمة من القنوات...")
-        await client.run_until_disconnected()
-
-    loop.run_until_complete(run())
-
-@app.route("/")
-def index():
-    return render_template_string(HTML_PAGE, step="authorized", error="")
-
-if __name__ == "__main__":
-    # تشغيل الاستماع في خلفية مستقلة
-    t = threading.Thread(target=start_telethon_bot, daemon=True)
-    t.start()
-
-    # تشغيل سيرفر الويب
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+        if
